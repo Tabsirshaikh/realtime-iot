@@ -1,0 +1,143 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Total Clean Readings",
+      "type": "stat",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT count(*) AS total_readings FROM readings;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "Throughput (Last 1m)",
+      "type": "stat",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT count(*) AS msgs_last_min FROM readings WHERE event_ts >= NOW() - INTERVAL '1 minute';",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "title": "Active Anomaly Alerts",
+      "type": "stat",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT count(*) AS alert_count FROM alerts;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "title": "Rejected Bad Rows",
+      "type": "stat",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT count(*) AS rejected_count FROM rejected;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "title": "Live Temperature by Room (°C)",
+      "type": "timeseries",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT event_ts AS time, temperature_c AS value, room AS metric FROM readings WHERE $__timeFilter(event_ts) ORDER BY event_ts ASC;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "title": "Live Power Draw by Room (kW)",
+      "type": "timeseries",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "time_series",
+          "rawSql": "SELECT event_ts AS time, power_kw AS value, room AS metric FROM readings WHERE $__timeFilter(event_ts) ORDER BY event_ts ASC;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 7, "w": 14, "x": 0, "y": 12 },
+      "id": 7,
+      "title": "Recent Anomaly Alerts Log",
+      "type": "table",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT event_ts, device_id, type, value FROM alerts ORDER BY event_ts DESC LIMIT 50;",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 7, "w": 10, "x": 14, "y": 12 },
+      "id": 8,
+      "title": "Recent Rejected Bad Rows Log",
+      "type": "table",
+      "datasource": "PostgreSQL",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT ts, reason, raw_payload FROM rejected ORDER BY ts DESC LIMIT 50;",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "2s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["iot", "smart-building", "stream"],
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["1s", "2s", "5s", "10s"]
+  },
+  "timezone": "browser",
+  "title": "Smart Building Real-Time IoT Dashboard",
+  "uid": "iot-realtime-dashboard",
+  "version": 1
+}
