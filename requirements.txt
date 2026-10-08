@@ -1,18 +1,11 @@
 # Core Stream Processing & Broker
 confluent-kafka>=2.3.0
-pydantic>=2.5.0
-
-# Database & Sinks
 psycopg2-binary>=2.9.9
-deltalake>=0.17.0
-pyarrow>=14.0.0
 
-# Batch Analytics
+# Batch Analytics on Parquet (DuckDB vs Polars)
+pyarrow>=14.0.0
 duckdb>=0.10.0
 polars>=0.20.0
 
-# Testing & Quality
+# Testing
 pytest>=7.4.0
-pytest-asyncio>=0.23.0
-flake8>=6.1.0
-black>=23.12.0
