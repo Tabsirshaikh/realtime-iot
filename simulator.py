@@ -102,19 +102,32 @@ class SimulatorEngine:
             logger.info("Running in mock mode. Messages will be logged to stdout.")
             return
 
-        try:
-            from confluent_kafka import Producer
-            conf = {
-                "bootstrap.servers": self.bootstrap_servers,
-                "client.id": "iot-simulator",
-                "linger.ms": 5,
-                "acks": 1,
-            }
-            self.producer = Producer(conf)
-            logger.info(f"Connected to Kafka/Redpanda at {self.bootstrap_servers}")
-        except Exception as e:
+        servers_to_try = [self.bootstrap_servers]
+        if "19092" not in self.bootstrap_servers and "9092" in self.bootstrap_servers:
+            servers_to_try.insert(0, self.bootstrap_servers.replace("9092", "19092"))
+
+        connected = False
+        last_err = None
+        for srv in servers_to_try:
+            try:
+                from confluent_kafka import Producer
+                conf = {
+                    "bootstrap.servers": srv,
+                    "client.id": "iot-simulator",
+                    "linger.ms": 5,
+                    "acks": 1,
+                }
+                self.producer = Producer(conf)
+                self.bootstrap_servers = srv
+                logger.info(f"Connected to Kafka/Redpanda at {srv}")
+                connected = True
+                break
+            except Exception as e:
+                last_err = e
+
+        if not connected:
             logger.warning(
-                f"Failed to connect to broker ({e}). Falling back to mock stdout mode."
+                f"Failed to connect to broker ({last_err}). Falling back to mock stdout mode."
             )
             self.mock_mode = True
 

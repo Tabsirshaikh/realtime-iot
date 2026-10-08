@@ -223,20 +223,29 @@ class DatabaseClient:
         }
 
         if not self.mock_mode:
-            try:
-                import psycopg2
-                self.conn = psycopg2.connect(
-                    host=host,
-                    port=port,
-                    dbname=dbname,
-                    user=user,
-                    password=password,
-                    connect_timeout=3,
-                )
-                self.conn.autocommit = True
-                logger.info(f"Connected to PostgreSQL at {host}:{port}/{dbname}")
-            except Exception as e:
-                logger.warning(f"PostgreSQL connection failed ({e}). Falling back to in-memory storage.")
+            ports_to_try = [port]
+            for alt in (5433, 5432):
+                if alt not in ports_to_try:
+                    ports_to_try.append(alt)
+            last_err = None
+            for p in ports_to_try:
+                try:
+                    import psycopg2
+                    self.conn = psycopg2.connect(
+                        host=host,
+                        port=p,
+                        dbname=dbname,
+                        user=user,
+                        password=password,
+                        connect_timeout=3,
+                    )
+                    self.conn.autocommit = True
+                    logger.info(f"Connected to PostgreSQL at {host}:{p}/{dbname}")
+                    break
+                except Exception as e:
+                    last_err = e
+            if self.conn is None:
+                logger.warning(f"PostgreSQL connection failed ({last_err}). Falling back to in-memory storage.")
                 self.mock_mode = True
 
     def insert_reading(self, reading: Dict[str, Any]) -> None:
@@ -406,25 +415,38 @@ class StreamProcessor:
         if self.mock_mode:
             return
 
-        try:
-            from confluent_kafka import Consumer, Producer
-            c_conf = {
-                "bootstrap.servers": self.bootstrap_servers,
-                "group.id": "processor-group",
-                "auto.offset.reset": "earliest",
-                "enable.auto.commit": True,
-            }
-            self.consumer = Consumer(c_conf)
-            self.consumer.subscribe(["sensors.raw"])
+        servers_to_try = [self.bootstrap_servers]
+        if "19092" not in self.bootstrap_servers and "9092" in self.bootstrap_servers:
+            servers_to_try.insert(0, self.bootstrap_servers.replace("9092", "19092"))
 
-            p_conf = {
-                "bootstrap.servers": self.bootstrap_servers,
-                "client.id": "processor-alerts-producer",
-            }
-            self.producer = Producer(p_conf)
-            logger.info("Kafka Consumer and Producer initialized successfully.")
-        except Exception as e:
-            logger.warning(f"Kafka initialization failed ({e}). Running in mock mode.")
+        connected = False
+        last_err = None
+        for srv in servers_to_try:
+            try:
+                from confluent_kafka import Consumer, Producer
+                c_conf = {
+                    "bootstrap.servers": srv,
+                    "group.id": "processor-group",
+                    "auto.offset.reset": "earliest",
+                    "enable.auto.commit": True,
+                }
+                self.consumer = Consumer(c_conf)
+                self.consumer.subscribe(["sensors.raw"])
+
+                p_conf = {
+                    "bootstrap.servers": srv,
+                    "client.id": "processor-alerts-producer",
+                }
+                self.producer = Producer(p_conf)
+                self.bootstrap_servers = srv
+                logger.info(f"Kafka Consumer and Producer initialized successfully on {srv}.")
+                connected = True
+                break
+            except Exception as e:
+                last_err = e
+
+        if not connected:
+            logger.warning(f"Kafka initialization failed ({last_err}). Running in mock mode.")
             self.mock_mode = True
 
     def process_message_payload(self, raw_str: str) -> None:
