@@ -183,3 +183,58 @@ Both **DuckDB** and **Polars** run the following 4 queries on `history.parquet`:
 4. **Query 4:** Total count of readings grouped by device.
 
 Results are verified for identical parity and timed over multiple runs.
+
+---
+
+## 8. Real-World Live API Ingestion (Bonus Milestone)
+
+To fulfill the bonus evaluation criteria for real-time external APIs, `live_api_producer.py` streams live meteorological telemetry from global observation stations (New York, London, Tokyo, Mumbai, Sydney) via the Open-Meteo REST API:
+
+```bash
+# Ingest live weather data into 'sensors.raw'
+python live_api_producer.py --cycles 10 --interval 3.0
+```
+
+---
+
+## 9. Apache Spark Analytics & Optimizations (`spark_analytics.py`)
+
+Fulfills requirements for distributed Spark transformations, caching, and partitioning:
+- **Transformations:** `.filter()`, `.groupBy()`, `.withColumn()`, `.repartition(4)`
+- **Optimizations:** In-memory `.persist(StorageLevel.MEMORY_ONLY)` & shuffle tuning
+- **Actions:** `.count()`, `.collect()`, `.show()`
+
+```bash
+python spark_analytics.py --rows 100000
+```
+
+---
+
+## 10. Automated Benchmark Capture & Visuals
+
+To automatically run the entire pipeline, benchmark latency/throughput, and export presentation-ready `.png` charts into `docs/screenshots/`:
+
+```bash
+python capture_results.py
+```
+
+Generated charts in `docs/screenshots/`:
+- `architecture_diagram.png`: End-to-end pipeline architecture.
+- `grafana_dashboard_preview.png`: Control room monitoring screen.
+- `latency_distribution.png`: Latency percentiles ($p50, p90, p99$) across scale.
+- `throughput_scaling.png`: Events/sec publishing throughput.
+- `engine_performance_race.png`: Head-to-head execution times.
+
+---
+
+## 11. Kubernetes Deployment (`k8s/`)
+
+Production-grade manifests are provided in [`k8s/`](k8s/):
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/postgres.yaml
+kubectl apply -f k8s/redpanda.yaml
+kubectl apply -f k8s/grafana.yaml
+kubectl apply -f k8s/processor.yaml
+```
+See [`k8s/README.md`](k8s/README.md) for full instructions.

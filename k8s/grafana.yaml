@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource
+  namespace: iot-pipeline
+data:
+  postgres.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: PostgreSQL-IoT
+        type: postgres
+        access: proxy
+        url: postgres:5432
+        user: iot_user
+        database: iot_db
+        isDefault: true
+        jsonData:
+          sslmode: disable
+          postgresVersion: 1600
+        secureJsonData:
+          password: iot_password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: iot-pipeline
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.3.3
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          volumeMounts:
+            - name: datasource-config
+              mountPath: /etc/grafana/provisioning/datasources/postgres.yaml
+              subPath: postgres.yaml
+      volumes:
+        - name: datasource-config
+          configMap:
+            name: grafana-datasource
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: iot-pipeline
+spec:
+  type: NodePort
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30030
+      name: http
+  selector:
+    app: grafana
