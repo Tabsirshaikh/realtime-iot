@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redpanda
+  namespace: iot-pipeline
+  labels:
+    app: redpanda
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:v23.3.8
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --overprovisioned
+            - --smp=1
+            - --memory=768M
+            - --reserve-memory=0M
+            - --kafka-addr=0.0.0.0:9092
+            - --advertise-kafka-addr=redpanda:9092
+            - --pandaproxy-addr=internal://0.0.0.0:8082
+            - --advertise-pandaproxy-addr=internal://redpanda:8082
+          ports:
+            - containerPort: 9092
+              name: kafka
+            - containerPort: 8082
+              name: pandaproxy
+            - containerPort: 9644
+              name: admin
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command: ["rpk", "cluster", "health", "--exit-when-healthy"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: iot-pipeline
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9092
+      targetPort: 9092
+      name: kafka
+    - port: 8082
+      targetPort: 8082
+      name: pandaproxy
+    - port: 9644
+      targetPort: 9644
+      name: admin
+  selector:
+    app: redpanda
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda-external
+  namespace: iot-pipeline
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9092
+      targetPort: 9092
+      name: kafka
+  selector:
+    app: redpanda
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: topic-init-job
+  namespace: iot-pipeline
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: topic-init
+          image: docker.redpanda.com/redpandadata/redpanda:v23.3.8
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              for i in $(seq 1 30); do
+                if rpk -X brokers=redpanda:9092 cluster health --exit-when-healthy; then break; fi
+                echo "Waiting for Redpanda ($i/30)"
+                sleep 2
+              done
+              rpk topic create sensors.raw -p 3 -r 1 --brokers redpanda:9092 || true
+              rpk topic create sensors.alerts -p 1 -r 1 --brokers redpanda:9092 || true
+              rpk topic list --brokers redpanda:9092

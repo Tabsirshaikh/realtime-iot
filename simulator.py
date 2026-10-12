@@ -103,7 +103,11 @@ class SimulatorEngine:
             return
 
         servers_to_try = [self.bootstrap_servers]
-        if "19092" not in self.bootstrap_servers and "9092" in self.bootstrap_servers:
+        if (
+            "19092" not in self.bootstrap_servers
+            and "9092" in self.bootstrap_servers
+            and not any(host in self.bootstrap_servers for host in ("redpanda", "localhost", "127.0.0.1"))
+        ):
             servers_to_try.insert(0, self.bootstrap_servers.replace("9092", "19092"))
 
         connected = False

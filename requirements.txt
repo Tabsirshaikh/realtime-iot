@@ -7,5 +7,7 @@ pyarrow>=14.0.0
 duckdb>=0.10.0
 polars>=0.20.0
 
-# Testing
+# Testing & Benchmarks
 pytest>=7.4.0
+matplotlib>=3.8.0
+pyspark>=3.5.0

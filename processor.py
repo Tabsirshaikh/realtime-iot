@@ -416,8 +416,6 @@ class StreamProcessor:
             return
 
         servers_to_try = [self.bootstrap_servers]
-        if "19092" not in self.bootstrap_servers and "9092" in self.bootstrap_servers:
-            servers_to_try.insert(0, self.bootstrap_servers.replace("9092", "19092"))
 
         connected = False
         last_err = None

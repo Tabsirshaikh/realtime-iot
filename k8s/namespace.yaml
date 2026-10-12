@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iot-pipeline
+  labels:
+    app.kubernetes.io/name: iot-pipeline
+    app.kubernetes.io/part-of: realtime-iot

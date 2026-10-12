@@ -1,0 +1,259 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource
+  namespace: iot-pipeline
+data:
+  postgres.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: PostgreSQL
+        type: postgres
+        access: proxy
+        url: postgres:5432
+        user: iot_user
+        secureJsonData:
+          password: iot_password
+        jsonData:
+          database: iot_db
+          sslmode: disable
+          maxOpenConns: 10
+          maxIdleConns: 5
+          connMaxLifetime: 14400
+          postgresVersion: 1600
+        isDefault: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: iot-pipeline
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'IoT Stream Dashboards'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/provisioning/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-json
+  namespace: iot-pipeline
+data:
+  iot-dashboard.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": true,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "Total Clean Readings",
+          "type": "stat",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "table",
+              "rawSql": "SELECT count(*) AS total_readings FROM readings;",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+          "id": 2,
+          "title": "Throughput (Last 1m)",
+          "type": "stat",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "table",
+              "rawSql": "SELECT count(*) AS msgs_last_min FROM readings WHERE event_ts >= NOW() - INTERVAL '1 minute';",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+          "id": 3,
+          "title": "Active Anomaly Alerts",
+          "type": "stat",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "table",
+              "rawSql": "SELECT count(*) AS alert_count FROM alerts;",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+          "id": 4,
+          "title": "Rejected Bad Rows",
+          "type": "stat",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "table",
+              "rawSql": "SELECT count(*) AS rejected_count FROM rejected;",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "id": 5,
+          "title": "Live Temperature by Room (°C)",
+          "type": "timeseries",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "time_series",
+              "rawSql": "SELECT event_ts AS time, temperature_c AS value, room AS metric FROM readings WHERE $__timeFilter(event_ts) ORDER BY event_ts ASC;",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "id": 6,
+          "title": "Live Power Draw by Room (kW)",
+          "type": "timeseries",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "time_series",
+              "rawSql": "SELECT event_ts AS time, power_kw AS value, room AS metric FROM readings WHERE $__timeFilter(event_ts) ORDER BY event_ts ASC;",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 7, "w": 14, "x": 0, "y": 12 },
+          "id": 7,
+          "title": "Recent Anomaly Alerts Log",
+          "type": "table",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "table",
+              "rawSql": "SELECT event_ts, device_id, type, value FROM alerts ORDER BY event_ts DESC LIMIT 50;",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 7, "w": 10, "x": 14, "y": 12 },
+          "id": 8,
+          "title": "Recent Rejected Bad Rows Log",
+          "type": "table",
+          "datasource": "PostgreSQL",
+          "targets": [
+            {
+              "format": "table",
+              "rawSql": "SELECT ts, reason, raw_payload FROM rejected ORDER BY ts DESC LIMIT 50;",
+              "refId": "A"
+            }
+          ]
+        }
+      ],
+      "refresh": "2s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["iot", "smart-building", "stream"],
+      "time": { "from": "now-15m", "to": "now" },
+      "timepicker": {
+        "refresh_intervals": ["1s", "2s", "5s", "10s"]
+      },
+      "timezone": "browser",
+      "title": "Smart Building Real-Time IoT Dashboard",
+      "uid": "iot-realtime-dashboard",
+      "version": 1
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: iot-pipeline
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.3.3
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "admin"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+          volumeMounts:
+            - name: datasource-config
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+              subPath: dashboards.yaml
+            - name: dashboard-json
+              mountPath: /etc/grafana/provisioning/dashboards/iot-dashboard.json
+              subPath: iot-dashboard.json
+      volumes:
+        - name: datasource-config
+          configMap:
+            name: grafana-datasource
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: dashboard-json
+          configMap:
+            name: grafana-dashboard-json
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: iot-pipeline
+spec:
+  type: NodePort
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30030
+      name: http
+  selector:
+    app: grafana
