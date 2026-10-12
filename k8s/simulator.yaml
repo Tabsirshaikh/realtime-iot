@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iot-simulator
+  namespace: iot-pipeline
+  labels:
+    app: iot-simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iot-simulator
+  template:
+    metadata:
+      labels:
+        app: iot-simulator
+    spec:
+      initContainers:
+        - name: install-dependencies
+          image: python:3.11-slim
+          command: ["/bin/sh", "-c"]
+          args: ["pip install --no-cache-dir --target=/python-packages confluent-kafka"]
+          volumeMounts:
+            - name: python-packages
+              mountPath: /python-packages
+      containers:
+        - name: simulator
+          image: python:3.11-slim
+          command: ["python", "-u", "/app/simulator.py"]
+          args: ["--bootstrap-servers", "redpanda:9092", "--devices", "10", "--rate", "1.0"]
+          env:
+            - name: PYTHONPATH
+              value: /python-packages
+          volumeMounts:
+            - name: simulator-source
+              mountPath: /app/simulator.py
+              subPath: simulator.py
+              readOnly: true
+            - name: python-packages
+              mountPath: /python-packages
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+      volumes:
+        - name: simulator-source
+          configMap:
+            name: simulator-source
+        - name: python-packages
+          emptyDir: {}

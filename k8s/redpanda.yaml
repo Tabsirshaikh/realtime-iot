@@ -18,18 +18,18 @@ spec:
       containers:
         - name: redpanda
           image: docker.redpanda.com/redpandadata/redpanda:v23.3.8
-          command:
+          args:
             - redpanda
             - start
-            - --kafka-addr=internal://0.0.0.0:9092
-            - --advertise-kafka-addr=internal://redpanda.iot-pipeline.svc.cluster.local:9092
-            - --pandaproxy-addr=internal://0.0.0.0:8082
-            - --advertise-pandaproxy-addr=internal://redpanda.iot-pipeline.svc.cluster.local:8082
             - --mode=dev-container
-            - --smp=1
-            - --memory=1G
-            - --reserve-memory=0M
             - --overprovisioned
+            - --smp=1
+            - --memory=768M
+            - --reserve-memory=0M
+            - --kafka-addr=0.0.0.0:9092
+            - --advertise-kafka-addr=redpanda:9092
+            - --pandaproxy-addr=internal://0.0.0.0:8082
+            - --advertise-pandaproxy-addr=internal://redpanda:8082
           ports:
             - containerPort: 9092
               name: kafka
@@ -46,9 +46,15 @@ spec:
               memory: "1Gi"
           readinessProbe:
             exec:
-              command: ["rpk", "cluster", "health"]
+              command: ["rpk", "cluster", "health", "--exit-when-healthy"]
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
@@ -70,28 +76,41 @@ spec:
   selector:
     app: redpanda
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda-external
+  namespace: iot-pipeline
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9092
+      targetPort: 9092
+      name: kafka
+  selector:
+    app: redpanda
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: topic-init-job
   namespace: iot-pipeline
 spec:
+  backoffLimit: 6
   template:
     spec:
       restartPolicy: OnFailure
       containers:
         - name: topic-init
           image: docker.redpanda.com/redpandadata/redpanda:v23.3.8
-          command:
-            - /bin/bash
-            - -c
+          command: ["/bin/bash", "-c"]
+          args:
             - |
-              echo "Waiting for Redpanda to become healthy..."
-              until rpk cluster health --brokers redpanda:9092; do
+              for i in $(seq 1 30); do
+                if rpk -X brokers=redpanda:9092 cluster health --exit-when-healthy; then break; fi
+                echo "Waiting for Redpanda ($i/30)"
                 sleep 2
               done
-              echo "Creating streaming topics..."
               rpk topic create sensors.raw -p 3 -r 1 --brokers redpanda:9092 || true
               rpk topic create sensors.alerts -p 1 -r 1 --brokers redpanda:9092 || true
-              echo "Topics created successfully:"
               rpk topic list --brokers redpanda:9092

@@ -69,7 +69,7 @@
 | **Dashboard** | Grafana | Live control room monitoring screen (auto-provisioned) |
 | **Batch engine 1** | DuckDB | SQL engine on Parquet historical data |
 | **Batch engine 2** | Polars | Fast DataFrame engine on Parquet historical data |
-| **Runner** | Docker Compose | Starts Redpanda, PostgreSQL, and Grafana in one command |
+| **Runner** | Docker Compose or Kubernetes | Runs the complete streaming stack locally |
 
 *Note: Delta Lake and Airflow are streamlined out in favor of direct high-performance Parquet files and scheduled script runs.*
 
@@ -227,9 +227,27 @@ Generated charts in `docs/screenshots/`:
 
 ---
 
-## 11. Kubernetes Deployment (`k8s/`)
+## 11. Run the Full Stack with Kubernetes
 
-Production-grade manifests are provided in [`k8s/`](k8s/):
+The Kubernetes manifests run Redpanda, PostgreSQL, the stream processor, the simulator, Redpanda Console, and Grafana in the `iot-pipeline` namespace. The simulator runs inside the cluster and sends continuous telemetry to Redpanda, so no host Kafka connection is needed.
+
+### Prerequisites
+
+- A running Kubernetes cluster and a configured `kubectl` context. Docker Desktop Kubernetes, Minikube, and Kind are suitable for local development.
+- `kubectl` installed and available in your terminal.
+- At least 2 GB of memory available to the cluster. The first deployment downloads container images and Python packages.
+
+Check that `kubectl` is connected to the cluster you intend to use:
+
+```bash
+kubectl config current-context
+kubectl get nodes
+```
+
+### Deploy
+
+Run these commands from the repository root. They create the namespace and database, start Redpanda, and deploy Grafana and the real stream processor:
+
 ```bash
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/postgres.yaml
@@ -237,4 +255,78 @@ kubectl apply -f k8s/redpanda.yaml
 kubectl apply -f k8s/grafana.yaml
 kubectl apply -f k8s/processor.yaml
 ```
-See [`k8s/README.md`](k8s/README.md) for full instructions.
+
+The simulator manifest mounts the repository's `simulator.py` from a ConfigMap. Create or refresh that ConfigMap, then start the simulator:
+
+```bash
+kubectl create configmap simulator-source -n iot-pipeline --from-file=simulator.py --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f k8s/simulator.yaml
+```
+
+For PowerShell, the same commands work as written. Recreate the ConfigMap command after changing `simulator.py` so the pod receives the updated source.
+
+Wait for the workloads to become ready:
+
+```bash
+kubectl rollout status deployment/postgres -n iot-pipeline --timeout=180s
+kubectl rollout status deployment/redpanda -n iot-pipeline --timeout=180s
+kubectl rollout status deployment/grafana -n iot-pipeline --timeout=180s
+kubectl rollout status deployment/stream-processor -n iot-pipeline --timeout=240s
+kubectl rollout status deployment/iot-simulator -n iot-pipeline --timeout=240s
+kubectl rollout status deployment/redpanda-console -n iot-pipeline --timeout=180s
+kubectl get pods -n iot-pipeline
+```
+
+Redpanda creates the `sensors.raw` and `sensors.alerts` topics. Confirm them with:
+
+```bash
+kubectl exec -n iot-pipeline deployment/redpanda -- rpk topic list
+```
+
+### Open Grafana and Redpanda Console
+
+Run each port-forward in its own terminal and leave those terminals open:
+
+```bash
+kubectl port-forward -n iot-pipeline svc/grafana 3000:3000
+```
+
+```bash
+kubectl port-forward -n iot-pipeline svc/redpanda-console 8081:8080
+```
+
+Open [http://localhost:3000](http://localhost:3000) for Grafana (`admin` / `admin`) and [http://localhost:8081](http://localhost:8081) for Redpanda Console. Port 8081 is used for Console to avoid conflicts with other local apps. The Grafana dashboard is provisioned automatically and refreshes every two seconds.
+
+### Verify telemetry and troubleshoot
+
+The simulator publishes 10 device readings once per second. Check simulator and processor logs:
+
+```bash
+kubectl logs -n iot-pipeline deployment/iot-simulator --tail=20
+kubectl logs -n iot-pipeline deployment/stream-processor --tail=20
+```
+
+Check the number of readings saved in PostgreSQL:
+
+```bash
+kubectl exec -n iot-pipeline deployment/postgres -- psql -U iot_user -d iot_db -c "SELECT count(*) AS readings FROM readings;"
+```
+
+If the dashboard panels say “No data,” check that both pods are Ready, that the simulator log says it connected to `redpanda:9092`, and that the dashboard time range includes the latest readings.
+
+Pause and resume telemetry without stopping the rest of the stack:
+
+```bash
+kubectl scale deployment/iot-simulator -n iot-pipeline --replicas=0
+kubectl scale deployment/iot-simulator -n iot-pipeline --replicas=1
+```
+
+To remove the deployment and its namespace, run:
+
+```bash
+kubectl delete namespace iot-pipeline
+```
+
+Deleting the namespace also deletes its PostgreSQL persistent volume claim and the data stored in that volume.
+
+See [`k8s/README.md`](k8s/README.md) for the manifest reference and deployment architecture.

@@ -46,6 +46,7 @@ This directory contains production-ready Kubernetes manifests to run the entire 
 | `postgres.yaml` | Deploys PostgreSQL 16 with schema ConfigMap, PVC, and ClusterIP service |
 | `redpanda.yaml` | Deploys Redpanda Kafka broker with topic initialization job |
 | `processor.yaml` | Deploys Python Stream Processor connected to internal services |
+| `simulator.yaml` | Publishes live telemetry from a simulator pod to Redpanda |
 | `grafana.yaml` | Deploys Grafana with auto-provisioned PostgreSQL datasource and NodePort 30030 |
 
 ---
@@ -68,11 +69,15 @@ Wait until Redpanda and the topic init job finish:
 kubectl get pods -n iot-pipeline -w
 ```
 
-### Step 3: Deploy Grafana and Stream Processor
+### Step 3: Deploy Grafana, Stream Processor, and Simulator
 ```bash
 kubectl apply -f grafana.yaml
 kubectl apply -f processor.yaml
+kubectl create configmap simulator-source -n iot-pipeline --from-file=simulator.py --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f simulator.yaml
 ```
+
+The simulator runs inside the cluster and publishes continuously to `redpanda:9092`. Its source ConfigMap is generated from the repository's `simulator.py`; recreate it after changing that file.
 
 ### Step 4: Verify Deployment
 ```bash
@@ -84,12 +89,9 @@ Forward Grafana:
 ```bash
 kubectl port-forward -n iot-pipeline svc/grafana 3000:3000
 ```
-Forward Redpanda (to run simulator from your host machine):
+Forward Redpanda only when you need a Kafka client on your host machine:
 ```bash
-kubectl port-forward -n iot-pipeline svc/redpanda 9092:9092
+kubectl port-forward -n iot-pipeline svc/redpanda-external 19092:9092
 ```
 
-Then run the simulator from your local machine:
-```bash
-python simulator.py --bootstrap-servers localhost:9092 --devices 10 --spike
-```
+The in-cluster simulator is the recommended way to populate Grafana; it avoids host Kafka advertised-listener routing differences.
